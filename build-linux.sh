@@ -8,7 +8,9 @@ cd "$(dirname "$0")"
 WORK="${AXS_WORK:-$PWD/.axs-toolchain}"
 SDK_REPO="${AXS_SDK_REPO:-https://github.com/theos/sdks.git}"
 SDK_NAME="${AXS_SDK_NAME:-iPhoneOS16.5.sdk}"
-THEOS_URL="${AXS_THEOS_URL:-https://gh-proxy.com/https://github.com/theos/theos/archive/refs/heads/master.tar.gz}"
+# Mirror for CN networks, direct GitHub as the fallback (a proxy can truncate long transfers).
+THEOS_MIRROR="${AXS_THEOS_URL:-https://gh-proxy.com/https://github.com/theos/theos/archive/refs/heads/master.tar.gz}"
+THEOS_URL="${AXS_THEOS_FALLBACK:-https://github.com/theos/theos/archive/refs/heads/master.tar.gz}"
 SCHEME="${1:-rootless}"
 
 mkdir -p "$WORK"
@@ -42,7 +44,9 @@ if [ ! -d "$WORK/sdk/iPhoneOS16.5.sdk" ]; then
     rm -rf "$WORK/sdk" && mkdir -p "$WORK/sdk"
     # 221 MB, mostly empty stubs: full import through a blobless sparse clone.
     rm -rf "$WORK/sdksrc"
-    git clone -q --depth 1 --filter=blob:none --sparse "$SDK_REPO" "$WORK/sdksrc"
+    git clone -q --depth 1 --filter=blob:none --sparse "$SDK_REPO" "$WORK/sdksrc" || \
+        { rm -rf "$WORK/sdksrc"; git clone -q --depth 1 --filter=blob:none --sparse \
+          "https://gh-proxy.com/https://github.com/theos/sdks.git" "$WORK/sdksrc"; }
     git -C "$WORK/sdksrc" sparse-checkout set "$SDK_NAME"
     mv "$WORK/sdksrc/$SDK_NAME" "$WORK/sdk/$SDK_NAME"
     rm -rf "$WORK/sdksrc"
@@ -50,7 +54,8 @@ fi
 
 if [ ! -d "$THEOS_DIR/makefiles" ]; then
     echo "==> fetching Theos"
-    fetch_ranged "$THEOS_URL" "$WORK/theos.tar.gz"
+    fetch_ranged "$THEOS_MIRROR" "$WORK/theos.tar.gz" || \
+        { rm -f "$WORK/theos.tar.gz"; fetch_ranged "$THEOS_URL" "$WORK/theos.tar.gz"; }
     mkdir -p "$THEOS_DIR"
     tar xzf "$WORK/theos.tar.gz" -C "$THEOS_DIR" --strip-components=1
     rm -f "$WORK/theos.tar.gz"
