@@ -13,12 +13,12 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 @property (nonatomic, strong) UIView *cardView;
 @property (nonatomic, strong) UILabel *timeLabel;
 @property (nonatomic, strong) UILabel *dateLabel;
-@property (nonatomic, strong) UIStackView *weatherStack;
+@property (nonatomic, strong) UIView *weatherBlock;
 @property (nonatomic, strong) UIImageView *conditionView;
 @property (nonatomic, strong) UILabel *conditionTextLabel;
 @property (nonatomic, strong) UILabel *temperatureLabel;
 @property (nonatomic, strong) UILabel *cityLabel;
-@property (nonatomic, strong) UIView *pageRow;
+@property (nonatomic, strong) UILabel *forecastLabel;
 @property (nonatomic, strong) UIImageView *pageUpView;
 @property (nonatomic, strong) UIImageView *pageDownView;
 @property (nonatomic, strong) UILabel *pageLabel;
@@ -92,167 +92,190 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 
 #pragma mark - View construction
 
+- (UILabel *)axs_carwidget_makeLabel:(CGFloat)size weight:(UIFontWeight)weight
+                               color:(UIColor *)color {
+    UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+    label.font = [UIFont systemFontOfSize:size weight:weight];
+    label.textColor = color;
+    label.adjustsFontSizeToFitWidth = YES;
+    label.minimumScaleFactor = 0.5;
+    label.numberOfLines = 1;
+    label.text = @"";
+    label.backgroundColor = [UIColor clearColor];
+    return label;
+}
+
+// Airaw hosts widgets inside CarPlay's own view tree. Everything here is frame based: no
+// constraints, no stack views, so a rewrite of the hierarchy by the host cannot blank the card.
 - (void)axs_carwidget_buildView {
     self.backgroundColor = [UIColor clearColor];
     self.clipsToBounds = YES;
+    self.opaque = NO;
 
     // Card: rounded, blurred material so the CarPlay wallpaper stays visible behind it.
     self.cardView = [[UIView alloc] initWithFrame:self.bounds];
     self.cardView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.cardView.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.55];
     self.cardView.layer.cornerRadius = 16.0;
-    if (@available(iOS 13.0, *)) {
-        self.cardView.layer.cornerCurve = kCACornerCurveContinuous;
-    }
     self.cardView.layer.masksToBounds = YES;
     [self addSubview:self.cardView];
 
     UIVisualEffectView *blurView = [[UIVisualEffectView alloc]
         initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleDark]];
+    blurView.frame = self.cardView.bounds;
     blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.cardView addSubview:blurView];
 
-    // Time and date.
-    self.timeLabel = [self axs_carwidget_labelWithWeight:UIFontWeightBold color:[UIColor labelColor]];
-    self.dateLabel = [self axs_carwidget_labelWithWeight:UIFontWeightMedium
-                                                   color:[UIColor secondaryLabelColor]];
+    // Clock.
+    self.timeLabel = [self axs_carwidget_makeLabel:44.0 weight:UIFontWeightBold color:[UIColor whiteColor]];
     [self.cardView addSubview:self.timeLabel];
+    self.dateLabel = [self axs_carwidget_makeLabel:18.0 weight:UIFontWeightMedium
+                                             color:[UIColor colorWithWhite:1.0 alpha:0.65]];
     [self.cardView addSubview:self.dateLabel];
 
-    // Weather block.
-    self.conditionView = [[UIImageView alloc] init];
+    // Weather block: one glyph, temperature, condition text and the city, stacked by frame.
+    self.weatherBlock = [[UIView alloc] initWithFrame:CGRectZero];
+    self.weatherBlock.backgroundColor = [UIColor clearColor];
+    self.weatherBlock.userInteractionEnabled = NO;
+    [self.cardView addSubview:self.weatherBlock];
+
+    self.conditionView = [[UIImageView alloc] initWithFrame:CGRectZero];
     self.conditionView.contentMode = UIViewContentModeScaleAspectFit;
-    self.conditionView.tintColor = [UIColor labelColor];
-    self.conditionView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.conditionView setContentHuggingPriority:UILayoutPriorityRequired
-                                   forAxis:UILayoutConstraintAxisHorizontal];
+    self.conditionView.tintColor = [UIColor whiteColor];
+    [self.weatherBlock addSubview:self.conditionView];
 
-    self.conditionTextLabel = [self axs_carwidget_labelWithWeight:UIFontWeightSemibold
-                                                            color:[UIColor labelColor]];
-    self.temperatureLabel = [self axs_carwidget_labelWithWeight:UIFontWeightSemibold
-                                                          color:[UIColor labelColor]];
-    self.cityLabel = [self axs_carwidget_labelWithWeight:UIFontWeightRegular
-                                                   color:[UIColor secondaryLabelColor]];
+    self.temperatureLabel = [self axs_carwidget_makeLabel:22.0 weight:UIFontWeightSemibold
+                                                   color:[UIColor whiteColor]];
+    [self.weatherBlock addSubview:self.temperatureLabel];
+    self.conditionTextLabel = [self axs_carwidget_makeLabel:18.0 weight:UIFontWeightSemibold
+                                                     color:[UIColor whiteColor]];
+    [self.weatherBlock addSubview:self.conditionTextLabel];
+    self.cityLabel = [self axs_carwidget_makeLabel:17.0 weight:UIFontWeightRegular
+                                            color:[UIColor colorWithWhite:1.0 alpha:0.65]];
+    [self.weatherBlock addSubview:self.cityLabel];
+    self.forecastLabel = [self axs_carwidget_makeLabel:15.0 weight:UIFontWeightMedium
+                                                color:[UIColor colorWithWhite:1.0 alpha:0.45]];
+    [self.weatherBlock addSubview:self.forecastLabel];
 
-    UIStackView *cityRow = [[UIStackView alloc] initWithArrangedSubviews:@[self.cityLabel]];
-    cityRow.axis = UILayoutConstraintAxisHorizontal;
-
-    self.weatherStack = [[UIStackView alloc] initWithArrangedSubviews:@[cityRow]];
-    self.weatherStack.axis = UILayoutConstraintAxisVertical;
-    self.weatherStack.alignment = UIStackViewAlignmentLeading;
-    self.weatherStack.spacing = 6.0;
-    self.weatherStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.cardView addSubview:self.weatherStack];
-
-    // Paging hint: Airaw moves between pages with left/right gestures.
-    self.pageUpView = [[UIImageView alloc] init];
-    self.pageUpView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.pageUpView setContentHuggingPriority:UILayoutPriorityRequired
-                                        forAxis:UILayoutConstraintAxisVertical];
-    self.pageDownView = [[UIImageView alloc] init];
-    self.pageDownView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.pageLabel = [self axs_carwidget_labelWithWeight:UIFontWeightMedium
-                                                   color:[UIColor tertiaryLabelColor]];
-    self.pageLabel.font = [UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightMedium];
+    // Page hint: Airaw pages with vertical swipes.
+    self.pageUpView = [[UIImageView alloc] initWithFrame:CGRectZero];
+    self.pageDownView = [[UIImageView alloc] initWithFrame:CGRectZero];
+    self.pageLabel = [self axs_carwidget_makeLabel:11.0 weight:UIFontWeightMedium
+                                            color:[UIColor colorWithWhite:1.0 alpha:0.4]];
     self.pageLabel.textAlignment = NSTextAlignmentCenter;
-    // Narrow vertical strip: chevron, page number, chevron.
-    UIStackView *pageStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.pageUpView,
-                                                                             self.pageLabel,
-                                                                             self.pageDownView]];
-    pageStack.axis = UILayoutConstraintAxisVertical;
-    pageStack.spacing = 1.0;
-    pageStack.alignment = UIStackViewAlignmentCenter;
-    pageStack.distribution = UIStackViewDistributionFillEqually;
-    self.pageRow = pageStack;
-    self.pageRow.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.cardView addSubview:self.pageRow];
-}
+    [self.cardView addSubview:self.pageUpView];
+    [self.cardView addSubview:self.pageDownView];
+    [self.cardView addSubview:self.pageLabel];
 
-- (UILabel *)axs_carwidget_labelWithWeight:(UIFontWeight)weight color:(UIColor *)color {
-    UILabel *label = [[UILabel alloc] init];
-    label.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:weight];
-    label.textColor = color;
-    label.adjustsFontSizeToFitWidth = YES;
-    label.minimumScaleFactor = 0.5;
-    label.numberOfLines = 1;
-    label.text = @"--";
-    return label;
+    self.weatherBlock.hidden = YES;
+    self.timeLabel.text = @"--:--";
+    self.dateLabel.text = @"--";
 }
 
 #pragma mark - Layout
 
-// Everything is proportional to the card height so Airaw can resize the widget freely.
+// Vertical rhythm for a 200x200 card: clock on top, weather pinned to the bottom.
 - (void)axs_carwidget_layoutWidget {
     CGFloat height = CGRectGetHeight(self.bounds);
     CGFloat width = CGRectGetWidth(self.bounds);
     if (height <= 1.0 || width <= 1.0) return;
 
+    self.cardView.frame = self.bounds;
     CGFloat padding = height * 0.09;
-    // Page column: chevrons sit close to the edge, the number needs a little room.
     CGFloat pageColumn = self.axs_carwidget_pageVisible ? MAX(height * 0.10, 18.0) : 0.0;
     CGFloat reserve = self.axs_carwidget_pageVisible ? pageColumn + padding * 0.4 : 0.0;
     CGFloat contentWidth = MAX(width - padding * 2.0 - reserve, 1.0);
 
     self.cardView.layer.cornerRadius = height * 0.10;
-    self.timeLabel.font = [UIFont monospacedDigitSystemFontOfSize:height * 0.24 weight:UIFontWeightBold];
-    self.dateLabel.font = [UIFont monospacedDigitSystemFontOfSize:height * 0.11 weight:UIFontWeightMedium];
+    self.timeLabel.font = [UIFont systemFontOfSize:height * 0.24 weight:UIFontWeightBold];
+    self.dateLabel.font = [UIFont systemFontOfSize:height * 0.11 weight:UIFontWeightMedium];
+    self.temperatureLabel.font = [UIFont systemFontOfSize:height * 0.13 weight:UIFontWeightSemibold];
+    self.conditionTextLabel.font = [UIFont systemFontOfSize:height * 0.10 weight:UIFontWeightSemibold];
     self.cityLabel.font = [UIFont systemFontOfSize:height * 0.095 weight:UIFontWeightRegular];
-    self.temperatureLabel.font = [UIFont monospacedDigitSystemFontOfSize:height * 0.12
-                                                                  weight:UIFontWeightSemibold];
-    self.conditionTextLabel.font = [UIFont systemFontOfSize:height * 0.10
-                                                      weight:UIFontWeightSemibold];
-    self.pageLabel.font = [UIFont monospacedDigitSystemFontOfSize:MAX(height * 0.065, 8.0)
-                                                           weight:UIFontWeightMedium];
+    self.forecastLabel.font = [UIFont systemFontOfSize:height * 0.08 weight:UIFontWeightMedium];
+    self.pageLabel.font = [UIFont systemFontOfSize:MAX(height * 0.065, 8.0) weight:UIFontWeightMedium];
 
-    BOOL hasWeather = !self.weatherStack.hidden;
-    // Vertical rhythm for a 200x200 square: clock, date, then the weather block pinned low.
-    CGFloat timeHeight = height * 0.24;
+    CGFloat timeHeight = height * 0.26;
     CGFloat dateHeight = height * 0.11;
-    CGFloat weatherHeight = hasWeather ? height * 0.42 : 0.0;
-
     self.timeLabel.frame = CGRectMake(padding, padding, contentWidth, timeHeight);
-    self.dateLabel.frame = CGRectMake(padding, CGRectGetMaxY(self.timeLabel.frame), contentWidth,
-                                      dateHeight);
-    if (hasWeather) {
-        self.weatherStack.frame = CGRectMake(padding, height - padding - weatherHeight, contentWidth,
-                                             weatherHeight);
-    } else {
-        // No weather data: move the clock block to the middle so the card does not look empty.
-        CGFloat blockTop = (height - timeHeight - dateHeight) / 2.0;
-        self.timeLabel.frame = CGRectMake(padding, blockTop, contentWidth, timeHeight);
-        self.dateLabel.frame = CGRectMake(padding, blockTop + timeHeight, contentWidth, dateHeight);
-        self.weatherStack.frame = CGRectZero;
-    }
+    self.dateLabel.frame = CGRectMake(padding, CGRectGetMaxY(self.timeLabel.frame) + height * 0.01,
+                                      contentWidth, dateHeight);
 
-    CGFloat pageX = CGRectGetMaxX(self.cardView.bounds) - padding * 0.6 - pageColumn;
-    self.pageRow.frame = CGRectMake(pageX, padding, pageColumn, height - padding * 2.0);
-    self.pageRow.hidden = !self.axs_carwidget_pageVisible;
-    [self axs_carwidget_sizePageChevrons];
+    BOOL hasWeather = !self.weatherBlock.hidden;
+    CGFloat blockHeight = height - padding * 2.0 - timeHeight - dateHeight - height * 0.04;
+    CGFloat blockY = hasWeather ? height - padding - blockHeight
+                                : CGRectGetMaxY(self.dateLabel.frame) + height * 0.04;
+    if (!hasWeather) blockHeight = 0.0;
+    self.weatherBlock.frame = CGRectMake(padding, blockY, contentWidth, blockHeight);
+
+    // The weather block stacks its own rows; recompute them for the current size.
+    [self axs_carwidget_layoutWeatherBlock];
+
+    // Page hint column on the right.
+    CGFloat side = MAX(height * 0.02, 6.0);
+    CGFloat pageX = width - padding * 0.6 - pageColumn;
+    CGFloat pageTop = padding;
+    self.pageUpView.frame = CGRectMake(pageX + (pageColumn - side) / 2.0, pageTop, side, side);
+    self.pageUpView.image = [self axs_carwidget_chevronImageWithSize:side pointingUp:YES];
+    self.pageDownView.frame = CGRectMake(pageX + (pageColumn - side) / 2.0,
+                                         height - padding - side, side, side);
+    self.pageDownView.image = [self axs_carwidget_chevronImageWithSize:side pointingUp:NO];
+    self.pageLabel.frame = CGRectMake(pageX, pageTop + side + 2.0, pageColumn,
+                                      CGRectGetMinY(self.pageDownView.frame) - pageTop - side - 4.0);
+    BOOL showPage = self.axs_carwidget_pageVisible;
+    self.pageUpView.hidden = !showPage;
+    self.pageDownView.hidden = !showPage;
+    self.pageLabel.hidden = !showPage;
 }
 
-- (void)axs_carwidget_sizePageChevrons {
-    CGFloat side = MAX(CGRectGetHeight(self.pageRow.bounds) * 0.16, 6.0);
-    if (CGSizeEqualToSize(self.pageUpView.image.size, CGSizeMake(side, side)) &&
-        self.pageUpView.image != nil) {
-        return;
+- (void)axs_carwidget_layoutWeatherBlock {
+    CGFloat blockHeight = CGRectGetHeight(self.weatherBlock.bounds);
+    CGFloat blockWidth = CGRectGetWidth(self.weatherBlock.bounds);
+    if (blockHeight <= 1.0) return;
+
+    CGFloat rowHeight = blockHeight * 0.28;
+    CGFloat symbolSide = MIN(rowHeight * 0.9, blockHeight * 0.26);
+    CGFloat y = 0.0;
+
+    // Row 1: optional glyph, temperature, condition text.
+    if (self.conditionView.image) {
+        self.conditionView.frame = CGRectMake(0, y + (rowHeight - symbolSide) / 2.0, symbolSide, symbolSide);
+        self.conditionView.hidden = NO;
+        self.temperatureLabel.frame = CGRectMake(symbolSide + 5.0, y, blockWidth * 0.33, rowHeight);
+    } else {
+        self.conditionView.hidden = YES;
+        self.temperatureLabel.frame = CGRectMake(0, y, blockWidth * 0.36, rowHeight);
     }
-    self.pageUpView.image = [self axs_carwidget_chevronImageWithSize:side pointingUp:YES];
-    self.pageDownView.image = [self axs_carwidget_chevronImageWithSize:side pointingUp:NO];
+    CGFloat conditionX = CGRectGetMaxX(self.temperatureLabel.frame) + 6.0;
+    self.conditionTextLabel.frame = CGRectMake(conditionX, y,
+                                               MAX(blockWidth - conditionX, 1.0), rowHeight);
+    y += rowHeight + blockHeight * 0.05;
+
+    self.cityLabel.frame = CGRectMake(0, y, blockWidth, blockHeight * 0.20);
+    y += blockHeight * 0.20;
+
+    BOOL showForecast = self.axs_carwidget_forecastVisible && self.forecastLabel.text.length > 0;
+    self.forecastLabel.hidden = !showForecast;
+    if (showForecast) {
+        self.forecastLabel.frame = CGRectMake(0, y, blockWidth, MIN(blockHeight - y, blockHeight * 0.20));
+    }
 }
 
 - (UIImage *)axs_carwidget_chevronImageWithSize:(CGFloat)side pointingUp:(BOOL)up {
+    if (side <= 0.0) return nil;
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
     format.opaque = NO;
     UIGraphicsImageRenderer *renderer =
         [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(side, side) format:format];
+    UIColor *tint = [UIColor colorWithWhite:1.0 alpha:0.35];
     return [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
         CGContextRef ctx = context.CGContext;
-        CGContextSetStrokeColorWithColor(ctx, [UIColor tertiaryLabelColor].CGColor);
+        CGContextSetStrokeColorWithColor(ctx, tint.CGColor);
         CGContextSetLineWidth(ctx, MAX(side * 0.16, 1.0));
         CGContextSetLineCap(ctx, kCGLineCapRound);
         CGContextSetLineJoin(ctx, kCGLineJoinRound);
         CGFloat inset = side * 0.2;
         CGFloat mid = side * 0.5;
-        // Pages are reached with vertical swipes, so the hint is drawn as an up/down chevron.
         CGFloat tip = up ? inset : side - inset;
         CGFloat base = up ? side - inset : inset;
         CGContextMoveToPoint(ctx, inset, base);
@@ -312,24 +335,21 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
     NSDictionary *state = self.axs_carwidget_state ?: @{};
     BOOL showWeather = AxsCarWidgetBool(state, AxsCarWidgetKeyShowWeather, YES);
     BOOL hasWeather = showWeather && AxsCarWidgetHasWeather(state);
-
-    for (UIView *view in [self.weatherStack.arrangedSubviews copy]) {
-        [self.weatherStack removeArrangedSubview:view];
-        [view removeFromSuperview];
-    }
-
-    if (hasWeather) {
-        self.weatherStack.hidden = NO;
-        [self axs_carwidget_buildWeatherRowsFromState:state];
+    self.weatherBlock.hidden = !hasWeather;
+    if (!hasWeather) {
+        self.temperatureLabel.text = @"";
+        self.conditionTextLabel.text = @"";
+        self.cityLabel.text = @"";
+        self.forecastLabel.text = @"";
+        self.conditionView.image = nil;
     } else {
-        // Without weather the clock alone fills the card; the stack collapses in -layoutWidget.
-        self.weatherStack.hidden = YES;
+        [self axs_carwidget_fillWeatherFromState:state];
     }
     [self axs_carwidget_updateAccessibilityLabel];
     [self setNeedsLayout];
 }
 
-- (void)axs_carwidget_buildWeatherRowsFromState:(NSDictionary *)state {
+- (void)axs_carwidget_fillWeatherFromState:(NSDictionary *)state {
     int code = (int)AxsCarWidgetDouble(state, AxsCarWidgetKeyWeatherConditionCode, 0);
     double temperature = AxsCarWidgetDouble(state, AxsCarWidgetKeyWeatherTemperature, 0);
     NSString *unitKey = AxsCarWidgetString(state, AxsCarWidgetKeyWeatherUnit, @"C");
@@ -339,11 +359,11 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
     self.temperatureLabel.text = [NSString stringWithFormat:@"%.0f°%@", temperature, unit];
     self.conditionTextLabel.text = AxsCarWidgetConditionText(code);
 
-    // Fetched place name wins; otherwise show the configured city while the first fetch runs.
+    // Fetched place name wins; while the first fetch runs, show the configured city.
     NSString *city = AxsCarWidgetString(state, AxsCarWidgetKeyWeatherCity, nil);
     self.cityLabel.text = city ?: [self axs_carwidget_configuredCity];
 
-    // Condition glyph when the running symbol set knows the code, text otherwise.
+    // SF Symbols only exist from iOS 13; without one the condition is shown as text alone.
     NSString *symbolName = AxsCarWidgetSymbolForConditionCode(code);
     UIImage *symbol = nil;
     if (symbolName.length > 0) {
@@ -351,72 +371,26 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
             symbol = [UIImage systemImageNamed:symbolName];
         }
     }
-    symbol = [symbol imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    self.conditionView.image = [symbol imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 
-    UIStackView *line = [[UIStackView alloc] initWithArrangedSubviews:
-        symbol ? @[self.conditionView, self.temperatureLabel, self.conditionTextLabel]
-               : @[self.temperatureLabel, self.conditionTextLabel]];
-    line.axis = UILayoutConstraintAxisHorizontal;
-    line.alignment = UIStackViewAlignmentCenter;
-    line.spacing = 5.0;
-    // Narrow cards: shrink the glyph and drop the text rather than truncating "Partly Cl…".
-    [self.temperatureLabel setContentCompressionResistancePriority:UILayoutPriorityRequired
-                                                          forAxis:UILayoutConstraintAxisHorizontal];
-    [self.conditionTextLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow
-                                                             forAxis:UILayoutConstraintAxisHorizontal];
-
-    if (symbol) {
-        self.conditionView.image = symbol;
-        // Square glyph, capped so the row never grows past the bottom block.
-        CGFloat cap = MAX(CGRectGetHeight(self.weatherStack.bounds) * 0.32, 10.0);
-        self.conditionView.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.conditionView.widthAnchor constraintEqualToAnchor:self.conditionView.heightAnchor].active = YES;
-        NSLayoutConstraint *capConstraint =
-            [self.conditionView.heightAnchor constraintLessThanOrEqualToConstant:cap];
-        capConstraint.priority = UILayoutPriorityRequired;
-        capConstraint.active = YES;
-    } else {
-        self.conditionView.image = nil;
-    }
-
-    [self.weatherStack addArrangedSubview:line];
-    [self.weatherStack addArrangedSubview:self.cityLabel];
-
-    if (self.axs_carwidget_forecastVisible) {
-        UIStackView *forecast = [self axs_carwidget_forecastViewFromState:state];
-        if (forecast) [self.weatherStack addArrangedSubview:forecast];
-    }
+    self.forecastLabel.text = self.axs_carwidget_forecastVisible
+        ? [self axs_carwidget_forecastTextFromState:state] : @"";
 }
 
-- (UIStackView *)axs_carwidget_forecastViewFromState:(NSDictionary *)state {
+- (NSString *)axs_carwidget_forecastTextFromState:(NSDictionary *)state {
     double high = AxsCarWidgetDouble(state, AxsCarWidgetKeyWeatherHigh, NAN);
     double low = AxsCarWidgetDouble(state, AxsCarWidgetKeyWeatherLow, NAN);
-    if (isnan(high) && isnan(low)) return nil;
-
+    if (isnan(high) && isnan(low)) return @"";
     NSString *unit = axs_carwidget_temperature_unit;
-    NSMutableArray *values = [NSMutableArray array];
-    if (!isnan(high)) [values addObject:[NSString stringWithFormat:@"高 %.0f°%@", high, unit]];
-    if (!isnan(low)) [values addObject:[NSString stringWithFormat:@"低 %.0f°%@", low, unit]];
-
-    NSMutableArray *labels = [NSMutableArray array];
-    for (NSUInteger index = 0; index < values.count; index++) {
-        UILabel *label = [self axs_carwidget_labelWithWeight:UIFontWeightMedium
-                                                       color:[UIColor tertiaryLabelColor]];
-        label.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-        label.text = values[index];
-        [labels addObject:label];
-    }
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:labels];
-    row.axis = UILayoutConstraintAxisHorizontal;
-    row.spacing = 6.0;
-    row.alignment = UIStackViewAlignmentCenter;
-    return row;
+    if (isnan(high)) return [NSString stringWithFormat:@"低 %.0f°%@", low, unit];
+    if (isnan(low)) return [NSString stringWithFormat:@"高 %.0f°%@", high, unit];
+    return [NSString stringWithFormat:@"高 %.0f°%@  低 %.0f°%@", high, unit, low, unit];
 }
 
 - (void)axs_carwidget_updateAccessibilityLabel {
     NSMutableArray *parts = [NSMutableArray arrayWithObjects:self.timeLabel.text ?: @"",
                                                               self.dateLabel.text ?: @"", nil];
-    if (!self.weatherStack.hidden) {
+    if (!self.weatherBlock.hidden) {
         [parts addObject:self.temperatureLabel.text ?: @""];
         [parts addObject:self.cityLabel.text ?: @""];
     }
