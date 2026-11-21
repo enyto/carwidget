@@ -46,7 +46,7 @@ jobs:
 
       - name: Build Package
         run: |
-          sudo chmod 0755 layout/DEBIAN/postinst layout/DEBIAN/postrm build.sh build-linux.sh
+          sudo chmod 0755 layout/DEBIAN/postinst layout/DEBIAN/postrm build-linux.sh
           sh build-linux.sh "${{ matrix.build_variant }}"
           export THEOS="$PWD/.axs-toolchain/theos" PATH=/usr/bin:$PATH
           make package THEOS_PACKAGE_SCHEME="${{ matrix.build_variant }}" \
