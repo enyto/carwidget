@@ -136,6 +136,48 @@ static void axs_carwidget_log(NSString *format, ...) {
     }
 }
 
+// The working third-party modules advertise their size instead of waiting for a layout pass.
+- (CGSize)intrinsicContentSize {
+    if (CGRectGetWidth(self.bounds) > 1.0 && CGRectGetHeight(self.bounds) > 1.0) {
+        return self.bounds.size;
+    }
+    return CGSizeMake(200.0, 200.0);
+}
+
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    axs_carwidget_log(@"didMoveToWindow window=%@ bounds=%@ super=%@",
+                      self.window ? @"yes" : @"no", NSStringFromCGRect(self.bounds),
+                      self.superview ? NSStringFromClass(self.superview.class) : @"nil");
+    if (self.window) {
+        [self axs_carwidget_adoptHostSizeIfNeeded];
+        [self axs_carwidget_refreshClock];
+        [self setNeedsDisplay];
+    }
+}
+
+// A host that never sizes us still gets a usable card: borrow the parent's box.
+- (void)axs_carwidget_adoptHostSizeIfNeeded {
+    if (CGRectGetWidth(self.bounds) > 1.0 && CGRectGetHeight(self.bounds) > 1.0) return;
+    UIView *host = self.superview;
+    if (!host) return;
+    CGRect hostBounds = host.bounds;
+    if (CGRectGetWidth(hostBounds) <= 1.0 || CGRectGetHeight(hostBounds) <= 1.0) {
+        // The Airaw cell may be sized by its own constraints; ask for a layout pass once.
+        [host layoutIfNeeded];
+        hostBounds = host.bounds;
+    }
+    if (CGRectGetWidth(hostBounds) > 1.0 && CGRectGetHeight(hostBounds) > 1.0) {
+        self.frame = hostBounds;
+        axs_carwidget_log(@"adopted host size %@", NSStringFromCGRect(hostBounds));
+    } else {
+        // Last resort: keep the card visible at the size declared in AirawInfo.plist.
+        self.bounds = CGRectMake(0, 0, 200.0, 200.0);
+        axs_carwidget_log(@"host had no size, using 200x200 (host=%@)", NSStringFromCGRect(hostBounds));
+    }
+    [self axs_carwidget_layoutWidget];
+}
+
 - (void)layoutSubviews {
     [super layoutSubviews];
     if ((CGRectGetWidth(self.bounds) <= 1.0 || CGRectGetHeight(self.bounds) <= 1.0) && self.superview) {
@@ -253,7 +295,7 @@ static void axs_carwidget_log(NSString *format, ...) {
     CGFloat height = CGRectGetHeight(self.bounds);
     CGFloat padding = height * 0.09;
     CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (!ctx) return;
+    if (!ctx || height <= 1.0) return;
     CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.12 alpha:0.55].CGColor);
     UIBezierPath *card = [UIBezierPath bezierPathWithRoundedRect:self.bounds cornerRadius:height * 0.10];
     CGContextAddPath(ctx, card.CGPath);
@@ -265,6 +307,11 @@ static void axs_carwidget_log(NSString *format, ...) {
           withAttributes:@{NSFontAttributeName: [UIFont systemFontOfSize:height * 0.24 weight:UIFontWeightBold],
                            NSForegroundColorAttributeName: [UIColor whiteColor],
                            NSParagraphStyleAttributeName: paragraph}];
+    static BOOL axs_carwidget_loggedDraw = NO;
+    if (!axs_carwidget_loggedDraw) {
+        axs_carwidget_loggedDraw = YES;
+        axs_carwidget_log(@"drawRect %@ text=%@", NSStringFromCGRect(self.bounds), timeText);
+    }
     [dateText drawInRect:CGRectMake(padding, padding + height * 0.27,
                                     CGRectGetWidth(self.bounds) - padding * 2, height * 0.14)
           withAttributes:@{NSFontAttributeName: [UIFont systemFontOfSize:height * 0.11 weight:UIFontWeightMedium],
