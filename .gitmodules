@@ -1,0 +1,3 @@
+[submodule "vendor/theos"]
+	path = vendor/theos
+	url = https://github.com/theos/theos

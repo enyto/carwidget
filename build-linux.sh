@@ -15,7 +15,7 @@ SCHEME="${1:-rootless}"
 
 mkdir -p "$WORK"
 SDK="$WORK/sdk/$SDK_NAME"
-THEOS_DIR="$WORK/theos"
+THEOS_DIR="${AXS_THEOS_DIR:-$WORK/theos}"
 
 # The mirror truncates long transfers, so the archive is fetched with HTTP range requests
 # and retried until the expected byte count is present.
@@ -50,6 +50,11 @@ if [ ! -d "$WORK/sdk/iPhoneOS16.5.sdk" ]; then
     git -C "$WORK/sdksrc" sparse-checkout set "$SDK_NAME"
     mv "$WORK/sdksrc/$SDK_NAME" "$WORK/sdk/$SDK_NAME"
     rm -rf "$WORK/sdksrc"
+fi
+
+if [ ! -d "$THEOS_DIR/makefiles" ] && [ -d "$PWD/vendor/theos/makefiles" ]; then
+    # Theos is pinned as a git submodule; checkout already fetched it.
+    THEOS_DIR="$PWD/vendor/theos"
 fi
 
 if [ ! -d "$THEOS_DIR/makefiles" ]; then
