@@ -83,6 +83,9 @@ if [ ! -d "$SDK/System/Library/Frameworks/UIKit.framework" ]; then
 fi
 
 export THEOS="$THEOS_DIR"
+# The linker shim reads these; exporting keeps it in step with AXS_WORK/SDK_NAME.
+export AXS_SDK="$SDK"
+export AXS_INSTALL_NAME="${AXS_INSTALL_NAME:-}"
 mkdir -p "$THEOS/sdks"
 ln -sfn "$SDK" "$THEOS/sdks/$(basename "$SDK")"
 
@@ -108,7 +111,7 @@ for a in "$@"; do
     *) args="$args $(printf '%s' "$a" | sed 's/ /\\ /g')" ;;
   esac
 done
-SDK="${AXS_SDK:-/tmp/theos/sdks/iPhoneOS16.5.sdk}"
+SDK="${AXS_SDK:?AXS_SDK not set}"
 # Theos drops -lobjc/-lSystem on the floor for Linux, and its -install_name points at the
 # build directory; both are supplied here. The slice follows the requested -arch (arm64e is
 # later patched into the fat header because ld64 on Linux falls back to plain arm64).
