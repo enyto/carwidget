@@ -9,6 +9,10 @@ FORCE_PACKAGE_NAME = yes
 PACKAGE_BUILDNAME ?=
 
 TARGET := iphone:clang:16.5:15.0
+# Keep the bundle plists as the XML this project ships: Theos would otherwise rewrite them into
+# binary format with plutil, which every official Airaw module avoids.
+THEOS_PACKAGE_USE_PLUTIL = 0
+
 include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = AxsCarWidget
