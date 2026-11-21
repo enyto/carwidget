@@ -36,7 +36,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            clang lld llvm make git curl ca-certificates dpkg-dev fakeroot xz-utils libplist-utils
+            clang lld llvm make git curl ca-certificates dpkg-dev fakeroot xz-utils
 
       - name: Bump Package Version
         id: bump
