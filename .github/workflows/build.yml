@@ -51,7 +51,9 @@ jobs:
           sudo chmod 0755 layout/DEBIAN/postinst layout/DEBIAN/postrm build-linux.sh
           # Only arm64: Ubuntu's ld64.lld rejects arm64e relocations for this code
           # ("INVALID relocation has width 8 bytes ... __DATA,__cfstring").
-          AXS_ARCHS=arm64 sh build-linux.sh "${{ matrix.build_variant }}"
+          AXS_ARCHS=arm64 \
+          AXS_INSTALL_NAME="/var/jb/Library/Airaw/Widgets/Controls/AxsCarWidget.bundle/AxsCarWidget" \
+            sh build-linux.sh "${{ matrix.build_variant }}"
 
       - name: Inspect Package
         run: |
