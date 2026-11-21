@@ -28,6 +28,13 @@ static void axs_carwidget_log(NSString *format, ...) {
     NSString *path = [directory stringByAppendingPathComponent:AxsCarWidgetDiagnosticsName];
     NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
     NSError *error = nil;
+    // The first line of a session truncates the file, so a stale log is obvious.
+    static BOOL axs_carwidget_logStarted = NO;
+    if (!axs_carwidget_logStarted) {
+        axs_carwidget_logStarted = YES;
+        [data writeToFile:path atomically:YES];
+        return;
+    }
     NSFileHandle *handle = [NSFileHandle fileHandleForWritingToURL:[NSURL fileURLWithPath:path]
                                                             error:&error];
     if (!handle) {
@@ -109,6 +116,13 @@ static void axs_carwidget_log(NSString *format, ...) {
 
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
+    // Some hosts attach the view before sizing it; adopt the host's bounds when ours are empty.
+    if (self.superview && (CGRectGetWidth(self.bounds) <= 1.0 || CGRectGetHeight(self.bounds) <= 1.0)) {
+        CGRect host = self.superview.bounds;
+        if (CGRectGetWidth(host) > 1.0 && CGRectGetHeight(host) > 1.0) {
+            self.frame = host;
+        }
+    }
     axs_carwidget_log(@"mounted=%@ window=%@ bounds=%@ super=%@ class=%@",
         self.superview ? @"yes" : @"no", self.window ? @"yes" : @"no",
         NSStringFromCGRect(self.bounds), self.superview ? NSStringFromClass(self.superview.class) : @"nil",
@@ -124,6 +138,12 @@ static void axs_carwidget_log(NSString *format, ...) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
+    if ((CGRectGetWidth(self.bounds) <= 1.0 || CGRectGetHeight(self.bounds) <= 1.0) && self.superview) {
+        CGRect host = self.superview.bounds;
+        if (CGRectGetWidth(host) > 1.0 && CGRectGetHeight(host) > 1.0) {
+            self.bounds = CGRectMake(0, 0, CGRectGetWidth(host), CGRectGetHeight(host));
+        }
+    }
     [self axs_carwidget_layoutWidget];
 }
 
@@ -158,6 +178,7 @@ static void axs_carwidget_log(NSString *format, ...) {
     self.backgroundColor = [UIColor clearColor];
     self.clipsToBounds = YES;
     self.opaque = NO;
+    self.contentMode = UIViewContentModeRedraw;
 
     // Card: rounded, blurred material so the CarPlay wallpaper stays visible behind it.
     self.cardView = [[UIView alloc] initWithFrame:self.bounds];
@@ -218,6 +239,37 @@ static void axs_carwidget_log(NSString *format, ...) {
     self.timeLabel.text = @"--:--";
     self.dateLabel.text = @"--";
     axs_carwidget_log(@"buildView done, self=%@", self.class);
+}
+
+- (void)drawRect:(CGRect)rect {
+    // Last-resort paint: if the host hides or reshuffles our subviews, the clock still shows.
+    NSDictionary *state = self.axs_carwidget_state ?: @{};
+    NSString *timeFormat = AxsCarWidgetString(state, AxsCarWidgetKeyTimeFormat, @"HH:mm");
+    NSString *dateFormat = AxsCarWidgetString(state, AxsCarWidgetKeyDateFormat, @"M月d日 EEE");
+    NSDate *now = [NSDate date];
+    NSString *timeText = [self axs_carwidget_stringFromDate:now format:timeFormat fallback:@"HH:mm"];
+    NSString *dateText = [self axs_carwidget_stringFromDate:now format:dateFormat fallback:@"M月d日 EEE"];
+
+    CGFloat height = CGRectGetHeight(self.bounds);
+    CGFloat padding = height * 0.09;
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (!ctx) return;
+    CGContextSetFillColorWithColor(ctx, [UIColor colorWithWhite:0.12 alpha:0.55].CGColor);
+    UIBezierPath *card = [UIBezierPath bezierPathWithRoundedRect:self.bounds cornerRadius:height * 0.10];
+    CGContextAddPath(ctx, card.CGPath);
+    CGContextFillPath(ctx);
+
+    NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+    paragraph.lineBreakMode = NSLineBreakByClipping;
+    [timeText drawInRect:CGRectMake(padding, padding, CGRectGetWidth(self.bounds) - padding * 2, height * 0.26)
+          withAttributes:@{NSFontAttributeName: [UIFont systemFontOfSize:height * 0.24 weight:UIFontWeightBold],
+                           NSForegroundColorAttributeName: [UIColor whiteColor],
+                           NSParagraphStyleAttributeName: paragraph}];
+    [dateText drawInRect:CGRectMake(padding, padding + height * 0.27,
+                                    CGRectGetWidth(self.bounds) - padding * 2, height * 0.14)
+          withAttributes:@{NSFontAttributeName: [UIFont systemFontOfSize:height * 0.11 weight:UIFontWeightMedium],
+                           NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.65],
+                           NSParagraphStyleAttributeName: paragraph}];
 }
 
 #pragma mark - Layout
@@ -487,6 +539,7 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
                           self.axs_carwidget_state ?: @{});
     }
     self.timeLabel.text = timeText;
+    [self setNeedsDisplay];
     self.dateLabel.text = [self axs_carwidget_stringFromDate:now format:dateFormat fallback:@"M月d日 EEE"];
 
     // Date only changes at midnight, so the rest of the tick is cheap.
