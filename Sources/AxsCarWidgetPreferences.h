@@ -47,18 +47,24 @@ static inline NSString *axs_carwidget_preferencesPath(void) {
 }
 
 static inline NSDictionary *axs_carwidget_readPreferences(void) {
+    // Airaw keeps its own layout keys in <domain>.plist and older builds of this widget wrote
+    // (null).plist; merge every candidate so neither side loses settings.
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    [candidates addObject:axs_carwidget_preferencesPath()];
-    [candidates addObject:AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath)];
-    [candidates addObject:AxsCarWidgetPreferencesLogicalPath];
     [candidates addObject:[[axs_carwidget_preferencesPath() stringByDeletingLastPathComponent]
                            stringByAppendingPathComponent:@"(null).plist"]];
+    [candidates addObject:AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath)];
+    [candidates addObject:axs_carwidget_preferencesPath()];
+    [candidates addObject:AxsCarWidgetPreferencesLogicalPath];
+
+    NSMutableDictionary *merged = [NSMutableDictionary dictionary];
     for (NSString *candidate in candidates) {
         NSDictionary *values = [NSDictionary dictionaryWithContentsOfFile:candidate];
         if ([values isKindOfClass:[NSDictionary class]]) {
-            return values;
+            [merged addEntriesFromDictionary:values];
         }
     }
+    if (merged.count > 0) return merged;
+
     // Compatibility fallback, not a second writable file location.
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:AxsCarWidgetPreferencesDomain];
     [defaults synchronize];
@@ -104,7 +110,9 @@ static inline BOOL axs_carwidget_updatePreferences(NSDictionary *changes, NSErro
 
     int lock = axs_carwidget_lockPreferences();
     BOOL success = NO;
-    NSMutableDictionary *values = nil;
+    // Start from the merged view so settings stored in older files are carried over on the
+    // first write, instead of being silently dropped.
+    NSMutableDictionary *values = [axs_carwidget_readPreferences() mutableCopy];
     NSData *existing = [NSData dataWithContentsOfFile:path options:0 error:error];
     if (existing) {
         id decoded = [NSPropertyListSerialization propertyListWithData:existing
@@ -117,9 +125,9 @@ static inline BOOL axs_carwidget_updatePreferences(NSDictionary *changes, NSErro
             axs_carwidget_unlockPreferences(lock);
             return NO;
         }
-        values = [decoded mutableCopy];
-    } else {
-        values = [axs_carwidget_readPreferences() mutableCopy];
+        NSMutableDictionary *onDisk = [decoded mutableCopy];
+        [onDisk addEntriesFromDictionary:values];
+        values = onDisk;
     }
     if (![values isKindOfClass:[NSMutableDictionary class]]) values = [NSMutableDictionary dictionary];
 
