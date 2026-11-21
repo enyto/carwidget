@@ -94,6 +94,7 @@ BIN="$THEOS/toolchain/linux/iphone/bin"
 mkdir -p "$BIN"
 cat > "$BIN/arm64-apple-darwin14-clang" <<'EOF'
 #!/bin/sh
+# Compile-only invocations carry one -target; the link step gets both slices from Theos.
 exec /usr/bin/clang "$@"
 EOF
 cat > "$BIN/arm64-apple-darwin14-ld" <<'EOF'
@@ -241,5 +242,9 @@ EOF
 chmod +x "$BIN/ldid"
 
 echo "==> building $SCHEME"
+# One clang invocation per file with both slices: Theos would otherwise link each arch in a
+# separate pass, and ld64 on Linux rejects arm64e relocations produced by an arm64 pass.
+ARCHS="arm64 arm64e"
+export ARCHS
 make clean THEOS_PACKAGE_SCHEME="$SCHEME" >/dev/null 2>&1 || true
-make THEOS_PACKAGE_SCHEME="$SCHEME"
+make THEOS_PACKAGE_SCHEME="$SCHEME" ARCHS="$ARCHS"
