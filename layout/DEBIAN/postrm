@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # The widget is gone, so its Airaw preference file would only be orphaned.
+    for prefix in "/" "/var/jb/"; do
+        rm -f "${prefix}Library/Airaw/Preferences/com.axs.carwidget.plist"
+    done
+fi
+
+exit 0

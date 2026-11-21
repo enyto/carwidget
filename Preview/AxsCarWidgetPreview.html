@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CarPlay 小组件 · 界面预览</title>
+<style>
+  :root {
+    --time-size: 48px;      /* height * 0.24 */
+    --date-size: 22px;      /* height * 0.11 */
+    --temp-size: 24px;      /* height * 0.12 */
+    --cond-size: 20px;      /* height * 0.10 */
+    --city-size: 19px;      /* height * 0.095 */
+    --fc-size: 12px;        /* fixed Pt, matches UILabel default set in -forecastViewFromState */
+    --page-size: 13px;      /* height * 0.065 */
+    --pad: 18px;            /* height * 0.09 */
+    --reserve: 27px;        /* page column 20 + 0.4 x padding(18) */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+    background: radial-gradient(120% 90% at 20% 0%, #1b3b5c 0%, #0b1420 55%, #05080d 100%);
+    color: #fff; display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 28px 16px 40px;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; letter-spacing: .5px; }
+  .hint { font-size: 12px; color: #8d9bb0; margin: -14px 0 0; text-align: center; max-width: 520px; }
+  .stage { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .frame { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .frame span { font-size: 11px; color: #8d9bb0; }
+
+/* CarPlay-ish wallpaper backdrop */
+  .carplay {
+    width: 320px; height: 200px; border-radius: 12px; position: relative; overflow: hidden;
+    background:
+      linear-gradient(135deg, rgba(12,24,40,.15), rgba(12,24,40,.55)),
+      radial-gradient(80% 120% at 10% 10%, #2f6f8f 0%, transparent 60%),
+      radial-gradient(70% 100% at 95% 90%, #6a4a86 0%, transparent 65%),
+      linear-gradient(160deg, #101923, #1d2733 60%, #0d131a);
+    box-shadow: 0 24px 60px rgba(0,0,0,.45);
+    display: grid; place-items: center;
+  }
+
+  /* Widget card — mirrors AxsCarWidget -layoutWidget (absolute frames). */
+  .widget {
+    width: 200px; height: 200px; border-radius: 20px; position: relative; overflow: hidden;
+    background: rgba(24, 26, 30, .58);
+    -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+    border: .5px solid rgba(255,255,255,.12);
+    color: #fff;
+  }
+  .widget .time {
+    position: absolute; left: var(--pad); top: var(--pad);
+    width: calc(100% - var(--pad) * 2 - var(--reserve)); height: 28%;
+    display: flex; align-items: flex-start;
+    font: 700 var(--time-size)/1 ui-monospace, "SF Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums; letter-spacing: -1.5px; white-space: nowrap; overflow: hidden;
+  }
+  .widget .date {
+    position: absolute; left: var(--pad); top: calc(var(--pad) + 28%);
+    width: calc(100% - var(--pad) * 2 - var(--reserve)); height: 11%;
+    display: flex; align-items: flex-start;
+    font: 500 var(--date-size)/1 -apple-system, "PingFang SC", sans-serif;
+    color: rgba(235,235,245,.62); white-space: nowrap; overflow: hidden;
+  }
+  .widget .wx {
+    position: absolute; left: var(--pad); bottom: var(--pad);
+    width: calc(100% - var(--pad) * 2 - var(--reserve)); height: 42%;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 6px;
+  }
+  .widget .wx > .line { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
+  .widget .temp { font: 600 var(--temp-size)/1 ui-monospace, "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .widget .cond { font: 600 var(--cond-size)/1 -apple-system, "PingFang SC", sans-serif; white-space: nowrap; }
+  .widget .city { font: 400 var(--city-size)/1.1 -apple-system, "PingFang SC", sans-serif; color: rgba(235,235,245,.62); }
+  .widget .fc { display: flex; gap: 6px; font: 500 var(--fc-size)/1.2 -apple-system, "PingFang SC", sans-serif; color: rgba(235,235,245,.35); }
+  .widget svg.sym { width: 1.15em; height: 1.15em; flex: none; fill: currentColor; margin-top: -.12em; transform: scale(.82); transform-origin: center; }
+  .widget .wx > .line > .cond { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+  .widget .pages {
+    position: absolute; right: calc(var(--pad) * .6); top: var(--pad); bottom: var(--pad); width: 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    color: rgba(235,235,245,.35);
+  }
+  .widget .pages .num { font: 500 var(--page-size)/1 ui-monospace, monospace; color: rgba(235,235,245,.45); }
+  .widget .pages svg { width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* no-weather variant: clock block centered, stack hidden */
+  .nowx .wx, .nowx .pages { display: none; }
+  .nowx .time { top: calc(50% - 19.5%); }
+  .nowx .date { top: calc(50% - 8.5%); }
+
+  /* ---------- simulator UI ---------- */
+  .sim {
+    width: min(560px, 100%); background: rgba(255,255,255,.035); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 16px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .sim h2 { font-size: 13px; font-weight: 600; margin: 0; color: #c9d4e3; letter-spacing: .3px; }
+  .row { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; }
+  .field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: #8d9bb0; }
+  .field input[type=text], .field select, .field input[type=number] {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: #fff;
+    border-radius: 8px; padding: 7px 10px; font: 13px -apple-system, "PingFang SC", sans-serif; min-width: 120px;
+  }
+  .field input[type=range] { width: 160px; accent-color: #3d8bff; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c9d4e3; }
+  .toggle input { width: 38px; height: 22px; accent-color: #34c759; }
+  .value { font-variant-numeric: tabular-nums; color: #fff; font-size: 12px; }
+  .presets button {
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12); color: #dbe4ef;
+    border-radius: 999px; padding: 6px 12px; font: 12px -apple-system, "PingFang SC", sans-serif; cursor: pointer;
+  }
+  .presets button:hover { background: rgba(255,255,255,.14); }
+  .note { font-size: 11px; color: #6f7d90; line-height: 1.5; }
+  .note code { background: rgba(255,255,255,.07); padding: 1px 5px; border-radius: 4px; font-size: 10.5px; }
+</style>
+</head>
+<body>
+  <h1>CarPlay 小组件 · 界面预览</h1>
+  <p class="hint">这是按 <code>AxsCarWidget.m</code> 的布局参数复刻的浏览器预览，用来在电脑/手机上快速调样式。最终显示以 Airaw 真机为准。</p>
+
+  <div class="stage">
+    <div class="frame">
+      <div class="carplay" style="width:200px;height:200px"><div class="widget" id="w1"></div></div>
+      <span>实际尺寸 200×200 · AirawInfo.plist</span>
+    </div>
+    <div class="frame">
+      <div class="carplay"><div class="widget" id="w2"></div></div>
+      <span>放在 CarPlay 桌面上（参考）</span>
+    </div>
+    <div class="frame">
+      <div class="carplay" style="width:260px;height:200px"><div class="widget" id="w3" style="width:260px"></div></div>
+      <span>拉宽后（在 Airaw 中调整大小）</span>
+    </div>
+  </div>
+
+  <div class="sim">
+    <h2>实时参数</h2>
+    <div class="row">
+      <label class="field">时间格式
+        <select id="timeFormat">
+          <option value="HH:mm">HH:mm（24 小时，默认）</option>
+          <option value="HH:mm:ss">HH:mm:ss</option>
+          <option value="h:mm">h:mm（12 小时）</option>
+          <option value="h:mm a">h:mm a（带上午/下午）</option>
+        </select>
+      </label>
+      <label class="field">日期格式
+        <input type="text" id="dateFormat" value="M月d日 EEE">
+      </label>
+      <label class="field">温度单位
+        <select id="unit"><option value="C">°C</option><option value="F">°F</option></select>
+      </label>
+      <label class="field">天气
+        <select id="cond">
+          <option value="44">晴间多云 (44)</option>
+          <option value="32">晴 (32)</option>
+          <option value="31">晴朗夜间 (31)</option>
+          <option value="6">雷阵雨 (6)</option>
+          <option value="13">小雪 (13)</option>
+          <option value="20">雾 (20)</option>
+          <option value="none">无天气数据</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <label class="toggle"><input type="checkbox" id="showForecast" checked> 显示今日最高/最低</label>
+      <label class="toggle"><input type="checkbox" id="showPage" checked> 显示翻页提示</label>
+      <label class="field">当前温度 <input type="range" id="temp" min="-20" max="45" value="18"> <span class="value" id="tempVal">18°C</span></label>
+    </div>
+    <div class="row presets">
+      <button data-time="HH:mm" data-date="M月d日 EEE">中文日期</button>
+      <button data-time="HH:mm" data-date="EEEE d MMMM">中文长日期</button>
+      <button data-time="h:mm a" data-date="EEE d MMM">英文 / 12 小时</button>
+    </div>
+    <p class="note">这里的“最高/最低”与“城市”需要由 Airaw 天气来源写入 <code>/Library/Airaw/Preferences/com.axs.carwidget.plist</code>（rootless 则在 <code>/var/jb/Library/... </code>）。预览里用固定示例值演示排版。</p>
+  </div>
+
+<script>
+  // SF Symbol approximations (subset of glyph shapes used by AxsCarWidgetSymbolForConditionCode).
+  const SYMBOLS = {
+    "cloud.bolt.rain.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M22 15H9.6C8.5 12.2 6 10.5 3.2 11c-2.4.4-4.1 2.5-4 4.9.1 2.6 2.3 4.6 4.9 4.6H10l-2 6h3l2-6h3l-2 6h3l2-6h3c3.3 0 6-2.7 6-6 0-3-2.2-5.5-5-5.9z"/></svg>',
+    "cloud.snow.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M21 13H10C9 10.7 6.8 9.3 4.5 9.7 2.4 10 1 11.8 1 14c0 2.4 1.9 4.3 4.3 4.3H21c2.9 0 5.2-2.3 5.2-5.2S23.9 13 21 13z"/><circle cx="8" cy="23" r="1.6"/><circle cx="14" cy="25" r="1.6"/><circle cx="20" cy="23" r="1.6"/></svg>',
+    "cloud.fog.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M21 9H9C7.7 7 5.5 6 3.6 6.6 1.4 7.3 0 9.3 0 11.6c0 2.6 2.1 4.7 4.7 4.7H21c2.9 0 5.2-2.3 5.2-5.2S23.9 9 21 9z"/><rect x="2" y="19" width="24" height="2.4" rx="1.2"/><rect x="6" y="24" width="20" height="2.4" rx="1.2"/></svg>',
+    "wind": '<svg class="sym" viewBox="0 0 32 32"><path d="M2 11h16a3 3 0 1 0-3-3h-2.5a5.5 5.5 0 1 1 5.5 5.5H2zM2 18h21a3 3 0 1 1-3 3h-2.5a5.5 5.5 0 1 0 5.5-5.5H2zM2 25h9v2.5H2z"/></svg>',
+    "moon.stars.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M19 24.5c-6 0-10.8-4.8-10.8-10.8 0-3.6 1.8-6.9 4.7-8.9C7.4 5.4 3 10.1 3 15.8 3 22.5 8.4 28 15.1 28c3.5 0 6.6-1.5 8.8-3.8-.2 0-.4.3-4.9.3z"/><circle cx="23" cy="7" r="1.4"/><circle cx="27" cy="12" r="1"/><circle cx="20" cy="5" r=".8"/></svg>',
+    "sun.max.fill": '<svg class="sym" viewBox="0 0 32 32"><circle cx="16" cy="16" r="7"/><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M16 1.5v4M16 26.5v4M1.5 16h4M26.5 16h4M5.7 5.7l2.8 2.8M23.5 23.5l2.8 2.8M5.7 26.3l2.8-2.8M23.5 8.5l2.8-2.8"/></g></svg>',
+    "thermometer.sun.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M11 4a3 3 0 0 1 3 3v11.2a6 6 0 1 1-6 0V7a3 3 0 0 1 3-3z" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="11" cy="24" r="2.6"/><circle cx="25" cy="7" r="3.4"/></svg>',
+    "cloud.heavyrain.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M21 9H10C9 6.7 6.8 5.3 4.5 5.7 2.4 6 1 7.8 1 10c0 2.4 1.9 4.3 4.3 4.3H21c2.9 0 5.2-2.3 5.2-5.2S23.9 9 21 9z"/><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M8 19l-1.6 5M14 19l-1.6 5M20 19l-1.6 5"/></g></svg>',
+    "cloud.fill": '<svg class="sym" viewBox="0 0 32 32"><path d="M22 13H10C9 10.7 6.8 9.3 4.5 9.7 2.4 10 1 11.8 1 14c0 2.4 1.9 4.3 4.3 4.3H22c2.9 0 5.2-2.3 5.2-5.2S24.9 13 22 13z"/></svg>',
+    "tornado": '<svg class="sym" viewBox="0 0 32 32"><path d="M2 8h28l-3 4H5zM6 14h20l-3 4H9zM11 20h10l-2.5 4h-5z"/></svg>'
+  };
+  const COND = {};
+  function condInfo(code) {
+    if (code == 0 || code == 1 || code == 2 || code == 3) return ["tornado", "Tornado"];
+    if (code <= 12) return ["cloud.bolt.rain.fill", "Thunderstorm"];
+    if (code <= 17) return ["cloud.snow.fill", "Snow"];
+    if (code === 19 || code === 20 || code === 21) return ["cloud.fog.fill", "Fog"];
+    if (code === 22) return ["wind", "Windy"];
+    if (code <= 30) return ["cloud.snow.fill", "Snow"];
+    if (code === 31 || code === 33) return ["moon.stars.fill", "Clear"];
+    if (code === 32 || code === 34) return ["sun.max.fill", "Clear"];
+    if (code === 36) return ["thermometer.sun.fill", "Hot"];
+    if (code <= 39) return ["cloud.bolt.rain.fill", "Scattered Storms"];
+    if (code <= 43) return ["cloud.heavyrain.fill", "Heavy Snow"];
+    return ["cloud.fill", "Partly Cloudy"];
+  }
+
+  const up = '<svg viewBox="0 0 12 12"><path d="M2.5 8L6 4.5 9.5 8"/></svg>';
+  const down = '<svg viewBox="0 0 12 12"><path d="M2.5 4L6 7.5 9.5 4"/></svg>';
+
+  function plural(unit) { return unit === "F" ? "°F" : "°C"; }
+
+  function render() {
+    const timeFormat = document.getElementById("timeFormat").value;
+    const dateFormat = document.getElementById("dateFormat").value;
+    const unit = document.getElementById("unit").value;
+    const cond = document.getElementById("cond").value;
+    const showForecast = document.getElementById("showForecast").checked;
+    const showPage = document.getElementById("showPage").checked;
+    const temp = Number(document.getElementById("temp").value);
+    document.getElementById("tempVal").textContent = temp + plural(unit);
+
+    const now = new Date();
+    const timeText = formatDate(now, timeFormat);
+    const dateText = formatDate(now, dateFormat);
+
+    const hasWeather = cond !== "none";
+    const high = 23, low = 12;
+    const [sym, condText] = hasWeather ? condInfo(Number(cond)) : ["", ""];
+
+    document.querySelectorAll(".widget").forEach((w) => {
+      w.classList.toggle("nowx", !hasWeather);
+      let html = `<div class="time">${escapeHTML(timeText)}</div>
+                  <div class="date">${escapeHTML(dateText)}</div>`;
+      if (hasWeather) {
+        html += `<div class="wx">
+                   <div class="line">${SYMBOLS[sym] || ""}<span class="temp">${temp}${plural(unit)}</span><span class="cond">${condText}</span></div>
+                   <div class="city">上海</div>
+                   ${showForecast ? `<div class="fc"><span>高 ${high}${plural(unit)}</span><span>低 ${low}${plural(unit)}</span></div>` : ""}
+                 </div>`;
+      }
+      if (showPage) {
+        html += `<div class="pages"><span>${up}</span><span class="num">1</span><span>${down}</span></div>`;
+      }
+      w.innerHTML = html;
+    });
+  }
+
+  function escapeHTML(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+  // Minimal NSDateFormatter-compatible formatter for the tokens used above.
+  // Longest tokens first; "EEEE" becomes 周六 in the Chinese pattern and Saturday in English ones.
+  function formatDate(date, pattern) {
+    const weekCN = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const weekEN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const weekLongCN = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+    const weekLongEN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const monthEN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const pad = (n) => String(n).padStart(2, "0");
+    const d = date.getDay(), h24 = date.getHours(), h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+    const chinese = /[\u4e00-\u9fff]/.test(pattern);
+    const parts = [
+      ["yyyy", String(date.getFullYear())],
+      ["EEEE", chinese ? weekLongCN[d] : weekLongEN[d]],
+      ["MMMM", monthEN[date.getMonth()]],
+      ["MMM", monthShort[date.getMonth()]],
+      ["EEE", chinese ? weekCN[d] : weekEN[d]],
+      ["HH", pad(h24)], ["hh", pad(h12)], ["mm", pad(date.getMinutes())], ["ss", pad(date.getSeconds())],
+      ["M", String(date.getMonth() + 1)], ["d", String(date.getDate())],
+      ["h", String(h12)], ["a", h24 < 12 ? "上午" : "下午"]
+    ];
+    return pattern.split(/(\u0000[^\u0000]*\u0000)/).map((seg) => {
+      if (seg.startsWith("\u0000")) return seg.slice(1, -1);
+      return seg.replace(/(yyyy|EEEE|MMMM|MMM|EEE|HH|hh|mm|ss|M|d|h|a)/g, (t) => {
+        const hit = parts.find((p) => p[0] === t);
+        return hit ? hit[1] : t;
+      });
+    }).join("");
+  }
+
+  document.querySelectorAll("select, input").forEach((el) => {
+    el.addEventListener("input", render);
+    el.addEventListener("change", render);
+  });
+  document.querySelectorAll(".presets button").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.getElementById("timeFormat").value = b.dataset.time;
+      document.getElementById("dateFormat").value = b.dataset.date;
+      render();
+    });
+  });
+  setInterval(render, 1000);
+  render();
+</script>
+</body>
+</html>

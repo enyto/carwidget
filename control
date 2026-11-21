@@ -1,0 +1,11 @@
+Package: com.axs.carwidget
+Name: CarPlay 小组件
+Depends: firmware (>= 14.0)
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Airaw 模块式 CarPlay 组件：时间、日期与天气。装好后在 Airaw → 添加小部件 → 添加 找到“时间天气”。天气数据需由 Airaw 状态栏天气提供。
+Maintainer: Axs
+Author: Axs
+Section: Axs-Tweaks
+Icon: https://axs66.github.io/pro/icon/carwidget.png
+Sileodepiction: https://axs66.github.io/pro/sileodepiction/carwidget/js.json

@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+# Airaw runs as mobile and reads the Control bundle and its settings panel at user level.
+for prefix in "/" "/var/jb/"; do
+    bundle="${prefix}Library/Airaw/Widgets/Controls/AxsCarWidget.bundle"
+    if [ -d "$bundle" ]; then
+        chown -R mobile:mobile "$bundle" 2>/dev/null || true
+    fi
+done
+
+# Airaw refreshes widgets when it is reopened; nothing is killed automatically.
+exit 0
