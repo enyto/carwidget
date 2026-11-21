@@ -112,6 +112,15 @@ for a in "$@"; do
   esac
 done
 SDK="${AXS_SDK:?AXS_SDK not set}"
+# Re-derive the requested slice before dropping the -arch flags.
+slice_target="arm64-apple-ios15.0"
+prev_arg=""
+for a in "$@"; do
+  case "$prev_arg" in -arch)
+    case "$a" in arm64e) slice_target="arm64e-apple-ios15.0" ;; esac
+  esac
+  prev_arg="$a"
+done
 # Theos drops -lobjc/-lSystem on the floor for Linux, and its -install_name points at the
 # build directory; both are supplied here. The slice follows the requested -arch (arm64e is
 # later patched into the fat header because ld64 on Linux falls back to plain arm64).
@@ -119,7 +128,8 @@ SDK="${AXS_SDK:?AXS_SDK not set}"
 if [ -n "${AXS_INSTALL_NAME:-}" ]; then
   args="-Wl,-install_name,$AXS_INSTALL_NAME $args"
 fi
-exec /usr/bin/clang -target "arm64-apple-ios15.0" -fuse-ld=lld -shared \
+# The slice name is taken from -arch so ld64 emits matching relocations for each pass.
+exec /usr/bin/clang -target "${slice_target:-arm64-apple-ios15.0}" -fuse-ld=lld -shared \
   -isysroot "$SDK" -L"$SDK/usr/lib" -lobjc -lSystem \
   -F"$SDK/System/Library/Frameworks" -F"$SDK/System/Library/PrivateFrameworks" $args
 EOF
@@ -152,6 +162,7 @@ def thin(data, arch):
     return data
 
 def set_cpu(data, arch):
+    """arm64e shares the 8-byte pointer ABI with arm64, so re-typing the slice is enough."""
     if arch not in ("arm64", "arm64e"):
         return data
     sub = 0x80000002 if arch == "arm64e" else 0x00000000
