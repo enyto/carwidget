@@ -66,6 +66,22 @@ if [ ! -d "$THEOS_DIR/makefiles" ]; then
     rm -f "$WORK/theos.tar.gz"
 fi
 
+# Some Linux SDK bundles keep frameworks as PrivateFrameworks/X.framework/X.tbd and ship the
+# libs under usr/lib/*.tbd only; Theos expects -framework <Name> and -l<Name> to resolve, so
+# link a public framework view and name the libraries lib<Name>.tbd.
+if [ ! -d "$SDK/System/Library/Frameworks/UIKit.framework" ]; then
+    echo "==> normalising SDK layout"
+    for fw in "$SDK/System/Library/PrivateFrameworks"/*.framework "$SDK/System/Library/Frameworks"/*.framework; do
+        [ -d "$fw" ] || continue
+        name="$(basename "$fw" .framework)"
+        [ -e "$SDK/System/Library/Frameworks/$name.framework" ] || ln -sfn "$fw" "$SDK/System/Library/Frameworks/$name.framework"
+    done
+    for tbd in "$SDK/usr/lib"/*.tbd; do
+        [ -e "$tbd" ] || continue
+        case "$(basename "$tbd")" in lib*) ;; *) ln -sfn "$tbd" "$(dirname "$tbd")/lib$(basename "$tbd")" ;; esac
+    done
+fi
+
 export THEOS="$THEOS_DIR"
 mkdir -p "$THEOS/sdks"
 ln -sfn "$SDK" "$THEOS/sdks/$(basename "$SDK")"
