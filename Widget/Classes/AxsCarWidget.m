@@ -29,7 +29,13 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 @property (nonatomic, assign) BOOL axs_carwidget_pageVisible;
 @end
 
-@implementation AxsCarWidget
+@implementation AxsCarWidget {
+    // Auto-synthesis is deferred when the property is declared by a protocol and only re-declared
+    // in the class extension, so the storage is declared explicitly.
+    NSString *_identifier;
+    int _pageIndex;
+    int _pageType;
+}
 
 #pragma mark - Lifecycle
 
@@ -326,8 +332,10 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
     // Condition glyph when the running symbol set knows the code, text otherwise.
     NSString *symbolName = AxsCarWidgetSymbolForConditionCode(code);
     UIImage *symbol = nil;
-    if (symbolName.length > 0 && @available(iOS 13.0, *)) {
-        symbol = [UIImage systemImageNamed:symbolName];
+    if (symbolName.length > 0) {
+        if (@available(iOS 13.0, *)) {
+            symbol = [UIImage systemImageNamed:symbolName];
+        }
     }
     symbol = [symbol imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
 

@@ -81,22 +81,27 @@ WMO 天气码 → Apple 天气码的映射在 `AxsCarWidgetConditionCodeFromWMO`
 ## 构建
 
 ```sh
+# Linux（CI 同款，GitHub 上的 macOS runner 对这个账号不可用）
+sh build-linux.sh rootless
+
+# 已有 macOS + Theos + iPhoneOS16.5.sdk
 export THEOS=~/theos
-sh build.sh rootless          # 默认
-sh build.sh rootful rootless
-sh build.sh roothide
+make package THEOS_PACKAGE_SCHEME=rootless FORCE_PACKAGE_NAME=yes PACKAGE_BUILDNAME=rootless
 ```
 
-- SDK `16.5`，最低部署 iOS 15.0，架构 `arm64 arm64e`。
-- 面板装在 Airaw 的 Control bundle 内，所以包里有 `FORCE_PACKAGE_NAME = yes`。
-- 本地没有 Theos/SDK 时，可以把工程推到 GitHub，`.github/workflows/build.yml` 会在 `macos-14` 上装 SDK 并产出 deb、自动建 Release。
-- `build.sh` 不安装、不重启设备。
+`build-linux.sh` 会：经 theos/sdks 的稀疏克隆取 221 MB 的 16.5 SDK → 取 Theos → 生成 clang / ld / lipo / ldid 包装脚本 → 交叉编译 → 产出 `packages/*.deb`。
+
+- 架构 `arm64 arm64e`（fat），最低 iOS 15.0，SDK 16.5。
+- Linux 上的 `ld64.lld` 会退化成普通 arm64，所以脚本在合并 fat 时按 `-arch` 修正 arm64e 的 CPU 类型。
+- 面板装在 Airaw 的 Control bundle 内，打包需要 `FORCE_PACKAGE_NAME=yes`。
+- 构建脚本不安装、不重启设备。
 
 产物检查：
 
 ```sh
 dpkg-deb -I packages/*.deb
-dpkg-deb -c packages/*.deb   # 应能看到 AxsCarWidget.bundle 与其中的 Prefs/
+dpkg-deb -c packages/*.deb                       # 应看到 AxsCarWidget.bundle 与其中的 Prefs/
+llvm-objdump --macho --universal-headers <bundle>/AxsCarWidget   # arm64 + arm64e
 ```
 
 ## 预览
@@ -106,7 +111,8 @@ dpkg-deb -c packages/*.deb   # 应能看到 AxsCarWidget.bundle 与其中的 Pre
 ## 已验证 / 未验证
 
 - 已验证：与官方模块 `SUMusicWidget`、`ClockWidget`、`TwiWidget` 的 bundle 结构、`AirawInfo.plist`、`Config.plist` 单元格类型一致；配置逻辑（钳位、天气码映射）用 C 版本跑过；Open-Meteo 返回字段与解析代码对照过真实响应；plist 全部通过解析；预览页在浏览器渲染正常。
-- 未验证：本机没有 Theos + iOS SDK，**没有真正编译过**，也没有上真机。`ModuleInfo.plist` 的键名和面板的自动挂载方式是对照 Dcsyhi 的 API 文档推断的；如果 Airaw 不认，面板仍可通过 Airaw 的模块设置入口（读取内嵌 `Config.plist`）使用。
+- 已验证：`build-linux.sh` 在本机实际跑通（Theos + iPhoneOS16.5 SDK + clang/ld64.lld），产出 rootless deb，包内是 arm64 + arm64e 双切片，install_name 为 `/var/jb/Library/Airaw/Widgets/Controls/AxsCarWidget.bundle/AxsCarWidget`。
+- 未验证：真机运行（Airaw 加载组件、面板自动挂载 `ModuleInfo.plist`、定位权限弹窗）。`ModuleInfo.plist` 的键名和面板的自动挂载方式是对照 Dcsyhi 的 API 文档推断的；如果 Airaw 不认，面板仍可通过 Airaw 的模块设置入口（读取内嵌 `Config.plist`）使用。
 
 ## 后续可加
 

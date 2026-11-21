@@ -81,10 +81,13 @@
     [self.specifier setProperty:@(value) forKey:@"axs_carwidget_value"];
     [self axs_carwidget_refreshValue];
 
-    if ([self.control respondsToSelector:@selector(axs_carwidget_setStepperValue:specifier:)]) {
-        [self.control performSelector:@selector(axs_carwidget_setStepperValue:specifier:)
-                           withObject:@(value)
-                           withObject:self.specifier];
+    // PSTableCell keeps the owning controller in its target; the panel persists the value.
+    id target = [self.specifier target];
+    SEL setter = @selector(axs_carwidget_setStepperValue:specifier:);
+    if ([target respondsToSelector:setter]) {
+        IMP imp = [target methodForSelector:setter];
+        void (*call)(id, SEL, id, id) = (void (*)(id, SEL, id, id))imp;
+        call(target, setter, @(value), self.specifier);
     }
 }
 
