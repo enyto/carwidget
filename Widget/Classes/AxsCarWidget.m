@@ -49,7 +49,10 @@ static NSString *axs_carwidget_temperature_unit = @"C";
         [self axs_carwidget_applyState];
         [self axs_carwidget_refreshClock];
         [self axs_carwidget_startTimers];
-        [[AxsCarWidgetWeatherSource axs_carwidget_shared] axs_carwidget_refreshIfNeeded];
+        // Network work must never run on the construction path of a CarPlay view.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[AxsCarWidgetWeatherSource axs_carwidget_shared] axs_carwidget_refreshIfNeeded];
+        });
     }
     return self;
 }
@@ -64,6 +67,8 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
+    NSLog(@"[AxsCarWidget] mounted %@ bounds=%@ config=%@", self.superview ? @"yes" : @"no",
+          NSStringFromCGRect(self.bounds), axs_carwidget_preferencesPath());
     if (self.superview) {
         [self axs_carwidget_layoutWidget];
         [self axs_carwidget_startTimers];
@@ -76,6 +81,13 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 - (void)layoutSubviews {
     [super layoutSubviews];
     [self axs_carwidget_layoutWidget];
+}
+
+// A host may create the view with CGRectZero and only later give it a frame; pick that up.
+- (void)setFrame:(CGRect)frame {
+    [super setFrame:frame];
+    [self axs_carwidget_layoutWidget];
+    [self axs_carwidget_refreshClock];
 }
 
 #pragma mark - View construction
@@ -103,6 +115,8 @@ static NSString *axs_carwidget_temperature_unit = @"C";
     self.timeLabel = [self axs_carwidget_labelWithWeight:UIFontWeightBold color:[UIColor labelColor]];
     self.dateLabel = [self axs_carwidget_labelWithWeight:UIFontWeightMedium
                                                    color:[UIColor secondaryLabelColor]];
+    [self.cardView addSubview:self.timeLabel];
+    [self.cardView addSubview:self.dateLabel];
 
     // Weather block.
     self.conditionView = [[UIImageView alloc] init];

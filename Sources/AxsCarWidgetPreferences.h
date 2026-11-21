@@ -26,15 +26,32 @@ static inline NSString *AxsCarWidgetRootPath(NSString *path) { return ROOT_PATH_
 #endif
 
 // Widget install layout: /Library/Airaw/Widgets/Controls/<bundle>/<executable>
+static inline BOOL axs_carwidget_fileExists(NSString *path) {
+    return path.length > 0 && [[NSFileManager defaultManager] fileExistsAtPath:path];
+}
+
+// Airaw may be installed with the jailbreak prefix or at the real path; accept either so the
+// panel and the widget never read different files.
 static inline NSString *axs_carwidget_preferencesPath(void) {
-    return AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath);
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    [candidates addObject:AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath)];
+    [candidates addObject:AxsCarWidgetPreferencesLogicalPath];
+    for (NSString *candidate in candidates) {
+        if (axs_carwidget_fileExists(candidate)) return candidate;
+    }
+    return candidates.firstObject;
 }
 
 static inline NSDictionary *axs_carwidget_readPreferences(void) {
-    NSString *path = axs_carwidget_preferencesPath();
-    NSDictionary *values = path.length > 0 ? [NSDictionary dictionaryWithContentsOfFile:path] : nil;
-    if ([values isKindOfClass:[NSDictionary class]]) {
-        return values;
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    [candidates addObject:axs_carwidget_preferencesPath()];
+    [candidates addObject:AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath)];
+    [candidates addObject:AxsCarWidgetPreferencesLogicalPath];
+    for (NSString *candidate in candidates) {
+        NSDictionary *values = [NSDictionary dictionaryWithContentsOfFile:candidate];
+        if ([values isKindOfClass:[NSDictionary class]]) {
+            return values;
+        }
     }
     // Compatibility fallback, not a second writable file location.
     NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:AxsCarWidgetPreferencesDomain];
