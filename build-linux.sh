@@ -233,12 +233,29 @@ EOF
 chmod +x "$BIN/arm64-apple-darwin14-lipo"
 ln -sf "$BIN/arm64-apple-darwin14-lipo" "$BIN/lipo"
 
-# ldid: codesigning is not needed for a jailbreak bundle; a pass-through keeps packaging simple.
-cat > "$BIN/ldid" <<'EOF'
+# ldid: Airaw instantiates the module class from SpringBoard, which requires a signed bundle.
+# The official modules all carry LC_CODE_SIGNATURE, so an ad-hoc signature is mandatory.
+# Ubuntu has no ldid package; build it once into the work directory.
+if ! command -v ldid >/dev/null 2>&1 && [ ! -x "$WORK/ldid/ldid" ]; then
+    echo "==> building ldid"
+    rm -rf "$WORK/ldid"
+    if git clone -q --depth 1 https://github.com/ProcursusTeam/ldid.git "$WORK/ldid" 2>/dev/null; then
+        ( cd "$WORK/ldid" && make -j2 CXX=clang++ CXXFLAGS="-O2 -std=c++11" \
+            LDFLAGS="-fuse-ld=lld -lcrypto -lplist-2.0" >/dev/null 2>&1 ) || true
+    fi
+fi
+LDID_BIN="$(command -v ldid || true)"
+if [ -z "$LDID_BIN" ] && [ -x "$WORK/ldid/ldid" ]; then LDID_BIN="$WORK/ldid/ldid"; fi
+if [ -n "$LDID_BIN" ]; then
+    ln -sf "$LDID_BIN" "$BIN/ldid"
+    echo "==> ldid: $LDID_BIN"
+else
+    echo "==> WARNING: ldid not found, bundles will be unsigned" >&2
+    cat > "$BIN/ldid" <<'EOF'
 #!/bin/sh
-# Theos calls `ldid -S...` to attach signatures; jailbroken devices load unsigned bundles.
 exit 0
 EOF
+fi
 chmod +x "$BIN/ldid"
 
 # One clang invocation per file with both slices: Theos would otherwise link each arch in a
