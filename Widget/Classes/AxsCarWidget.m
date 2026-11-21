@@ -9,6 +9,46 @@
 // The Weather framework picks the unit from the device setting; the widget follows it.
 static NSString *axs_carwidget_temperature_unit = @"C";
 
+// Without a console (no SSH / no Mac) the widget reports what it did to a file next to its
+// preferences, so the log can be read in Filza and sent back.
+static NSString * const AxsCarWidgetDiagnosticsName = @"com.axs.carwidget.log";
+
+static void axs_carwidget_log(NSString *format, ...) {
+    NSDateFormatter *stamp = [[NSDateFormatter alloc] init];
+    stamp.dateFormat = @"HH:mm:ss.SSS";
+    va_list args;
+    va_start(args, format);
+    NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+    va_end(args);
+    NSString *line = [NSString stringWithFormat:@"[%@] %@\n", [stamp stringFromDate:[NSDate date]], message];
+    NSLog(@"[AxsCarWidget] %@", message);
+    NSFileManager *manager = [NSFileManager defaultManager];
+    NSString *directory = [axs_carwidget_preferencesPath() stringByDeletingLastPathComponent];
+    [manager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:NULL];
+    NSString *path = [directory stringByAppendingPathComponent:AxsCarWidgetDiagnosticsName];
+    NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+    NSError *error = nil;
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingToURL:[NSURL fileURLWithPath:path]
+                                                            error:&error];
+    if (!handle) {
+        [data writeToFile:path atomically:YES];
+        return;
+    }
+    // Keep the file small: start over once it grows past ~64 KB.
+    unsigned long long size = [handle seekToEndOfFile];
+    if (size > 64 * 1024) {
+        [handle closeFile];
+        [data writeToFile:path atomically:YES];
+        return;
+    }
+    @try {
+        [handle seekToEndOfFile];
+        [handle writeData:data];
+    } @catch (__unused NSException *exception) {
+    }
+    [handle closeFile];
+}
+
 @interface AxsCarWidget ()
 @property (nonatomic, strong) UIView *cardView;
 @property (nonatomic, strong) UILabel *timeLabel;
@@ -42,6 +82,8 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
+        axs_carwidget_log(@"initWithFrame %@ (iOS %@)", NSStringFromCGRect(frame),
+                          [[UIDevice currentDevice] systemVersion]);
         [self axs_carwidget_buildView];
         self.axs_carwidget_state = axs_carwidget_readPreferences();
         [self axs_carwidget_observePreferences];
@@ -67,8 +109,10 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 
 - (void)didMoveToSuperview {
     [super didMoveToSuperview];
-    NSLog(@"[AxsCarWidget] mounted %@ bounds=%@ config=%@", self.superview ? @"yes" : @"no",
-          NSStringFromCGRect(self.bounds), axs_carwidget_preferencesPath());
+    axs_carwidget_log(@"mounted=%@ window=%@ bounds=%@ super=%@ class=%@",
+        self.superview ? @"yes" : @"no", self.window ? @"yes" : @"no",
+        NSStringFromCGRect(self.bounds), self.superview ? NSStringFromClass(self.superview.class) : @"nil",
+        NSStringFromClass(self.class));
     if (self.superview) {
         [self axs_carwidget_layoutWidget];
         [self axs_carwidget_startTimers];
@@ -86,6 +130,9 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 // A host may create the view with CGRectZero and only later give it a frame; pick that up.
 - (void)setFrame:(CGRect)frame {
     [super setFrame:frame];
+    if (!CGRectEqualToRect(frame, self.bounds)) {
+        axs_carwidget_log(@"setFrame %@", NSStringFromCGRect(frame));
+    }
     [self axs_carwidget_layoutWidget];
     [self axs_carwidget_refreshClock];
 }
@@ -170,6 +217,7 @@ static NSString *axs_carwidget_temperature_unit = @"C";
     self.weatherBlock.hidden = YES;
     self.timeLabel.text = @"--:--";
     self.dateLabel.text = @"--";
+    axs_carwidget_log(@"buildView done, self=%@", self.class);
 }
 
 #pragma mark - Layout
@@ -178,7 +226,10 @@ static NSString *axs_carwidget_temperature_unit = @"C";
 - (void)axs_carwidget_layoutWidget {
     CGFloat height = CGRectGetHeight(self.bounds);
     CGFloat width = CGRectGetWidth(self.bounds);
-    if (height <= 1.0 || width <= 1.0) return;
+    if (height <= 1.0 || width <= 1.0) {
+        axs_carwidget_log(@"layout skipped, bounds=%@", NSStringFromCGRect(self.bounds));
+        return;
+    }
 
     self.cardView.frame = self.bounds;
     CGFloat padding = height * 0.09;
@@ -430,7 +481,12 @@ static void axs_carwidget_weatherPreferencesDidChange(CFNotificationCenterRef ce
 
     NSString *timeFormat = AxsCarWidgetString(config, AxsCarWidgetKeyTimeFormat, @"HH:mm");
     NSString *dateFormat = AxsCarWidgetString(config, AxsCarWidgetKeyDateFormat, @"M月d日 EEE");
-    self.timeLabel.text = [self axs_carwidget_stringFromDate:now format:timeFormat fallback:@"HH:mm"];
+    NSString *timeText = [self axs_carwidget_stringFromDate:now format:timeFormat fallback:@"HH:mm"];
+    if (![timeText isEqualToString:self.timeLabel.text]) {
+        axs_carwidget_log(@"clock %@ (%@), state=%@", timeText, timeFormat,
+                          self.axs_carwidget_state ?: @{});
+    }
+    self.timeLabel.text = timeText;
     self.dateLabel.text = [self axs_carwidget_stringFromDate:now format:dateFormat fallback:@"M月d日 EEE"];
 
     // Date only changes at midnight, so the rest of the tick is cheap.
