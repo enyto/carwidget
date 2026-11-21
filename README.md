@@ -111,7 +111,8 @@ llvm-objdump --macho --universal-headers <bundle>/AxsCarWidget   # arm64 + arm64
 ## 已验证 / 未验证
 
 - 已验证：与官方模块 `SUMusicWidget`、`ClockWidget`、`TwiWidget` 的 bundle 结构、`AirawInfo.plist`、`Config.plist` 单元格类型一致；配置逻辑（钳位、天气码映射）用 C 版本跑过；Open-Meteo 返回字段与解析代码对照过真实响应；plist 全部通过解析；预览页在浏览器渲染正常。
-- 已验证：`build-linux.sh` 在本机实际跑通（Theos + iPhoneOS16.5 SDK + clang/ld64.lld），产出 rootless deb，包内是 arm64 + arm64e 双切片，install_name 为 `/var/jb/Library/Airaw/Widgets/Controls/AxsCarWidget.bundle/AxsCarWidget`。
+- 已验证：`build-linux.sh` 在本机与 GitHub Actions（ubuntu-latest）各实跑过一次，CI 产出 `v1.0.0-14` 的 rootless deb，install_name 为 `/var/jb/Library/Airaw/Widgets/Controls/AxsCarWidget.bundle/AxsCarWidget`。
+- 架构说明：CI 只出 **arm64** 单切片。arm64e 在 Ubuntu 的 ld64.lld 上会因 `INVALID relocation … __DATA,__cfstring` 链接失败（同样代码在 Alpine 的 LLVM 19 上可以编出双架构）。arm64e 设备能运行 arm64 切片（不具备 PPL 指针鉴权的 arm64e 优势，但可加载）。
 - 未验证：真机运行（Airaw 加载组件、面板自动挂载 `ModuleInfo.plist`、定位权限弹窗）。`ModuleInfo.plist` 的键名和面板的自动挂载方式是对照 Dcsyhi 的 API 文档推断的；如果 Airaw 不认，面板仍可通过 Airaw 的模块设置入口（读取内嵌 `Config.plist`）使用。
 
 ## 后续可加
