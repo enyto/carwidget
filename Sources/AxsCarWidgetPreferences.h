@@ -39,6 +39,10 @@ static inline NSString *axs_carwidget_preferencesPath(void) {
     for (NSString *candidate in candidates) {
         if (axs_carwidget_fileExists(candidate)) return candidate;
     }
+    // Earlier builds shipped a bundle without Info.plist, so Airaw named the file (null).plist.
+    NSString *legacy = [[candidates.firstObject stringByDeletingLastPathComponent]
+                        stringByAppendingPathComponent:@"(null).plist"];
+    if (axs_carwidget_fileExists(legacy)) return legacy;
     return candidates.firstObject;
 }
 
@@ -47,6 +51,8 @@ static inline NSDictionary *axs_carwidget_readPreferences(void) {
     [candidates addObject:axs_carwidget_preferencesPath()];
     [candidates addObject:AxsCarWidgetRootPath(AxsCarWidgetPreferencesLogicalPath)];
     [candidates addObject:AxsCarWidgetPreferencesLogicalPath];
+    [candidates addObject:[[axs_carwidget_preferencesPath() stringByDeletingLastPathComponent]
+                           stringByAppendingPathComponent:@"(null).plist"]];
     for (NSString *candidate in candidates) {
         NSDictionary *values = [NSDictionary dictionaryWithContentsOfFile:candidate];
         if ([values isKindOfClass:[NSDictionary class]]) {
