@@ -241,10 +241,16 @@ exit 0
 EOF
 chmod +x "$BIN/ldid"
 
-echo "==> building $SCHEME"
 # One clang invocation per file with both slices: Theos would otherwise link each arch in a
 # separate pass, and ld64 on Linux rejects arm64e relocations produced by an arm64 pass.
-ARCHS="${AXS_ARCHS:-arm64 arm64e}"
+ARCHS="${AXS_ARCHS:-arm64}"
 export ARCHS
+
+echo "==> building $SCHEME"
 make clean THEOS_PACKAGE_SCHEME="$SCHEME" >/dev/null 2>&1 || true
 make THEOS_PACKAGE_SCHEME="$SCHEME" ARCHS="$ARCHS"
+
+echo "==> packaging $SCHEME"
+make package THEOS_PACKAGE_SCHEME="$SCHEME" FORCE_PACKAGE_NAME=yes \
+    PACKAGE_BUILDNAME="$SCHEME" ARCHS="$ARCHS"
+ls -1 packages/*.deb
