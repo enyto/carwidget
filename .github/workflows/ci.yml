@@ -1,0 +1,10 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - run: echo "mac runner ok"; sw_vers; xcodebuild -version
