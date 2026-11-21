@@ -22,7 +22,10 @@ AxsCarWidget_RESOURCE_DIRS = Resources
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 
-SUBPROJECTS += AxsCarWidgetPrefs
+# The working third-party modules ship exactly four files in the Control bundle and have no
+# sub-bundle inside it; a nested Prefs bundle made Airaw treat the module as a settings pane
+# instead of a widget, so it was never instantiated. The panel stays a separate install target
+# for later, but is not packaged into the Control bundle.
 include $(THEOS_MAKE_PATH)/aggregate.mk
 
 after-install::

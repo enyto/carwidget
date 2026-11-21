@@ -2,9 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>width</key>
-    <string>200</string>
-    <key>height</key>
-    <string>200</string>
+	<!--  作成者名　-->
+	<key>Author</key>
+	<string>Axs</string>
+	<!--  幅のデフォルトのサイズ -->
+	<key>width</key>
+	<string>200</string>
+	<!--  高さのデフォルトのサイズ -->
+	<key>height</key>
+	<string>200</string>
 </dict>
 </plist>
