@@ -49,7 +49,9 @@ jobs:
       - name: Build Package
         run: |
           sudo chmod 0755 layout/DEBIAN/postinst layout/DEBIAN/postrm build-linux.sh
-          sh build-linux.sh "${{ matrix.build_variant }}"
+          # Only arm64: Ubuntu's ld64.lld rejects arm64e relocations for this code
+          # ("INVALID relocation has width 8 bytes ... __DATA,__cfstring").
+          AXS_ARCHS=arm64 sh build-linux.sh "${{ matrix.build_variant }}"
           export THEOS="$PWD/.axs-toolchain/theos" PATH=/usr/bin:$PATH
           make package THEOS_PACKAGE_SCHEME="${{ matrix.build_variant }}" \
             FORCE_PACKAGE_NAME=yes PACKAGE_BUILDNAME="${{ matrix.build_variant }}"
